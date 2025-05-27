@@ -1,5 +1,7 @@
 require 'open3'
 require 'plist'
+require 'json'
+
 
 require_relative 'command_executor'
 require_relative 'helper'
@@ -34,17 +36,29 @@ module FastlaneCore
         Open3.popen3('xcrun simctl list devices') do |stdin, stdout, stderr, wait_thr|
           output = stdout.read
         end
-
+        
         unless output.include?("== Devices ==")
           UI.error("xcrun simctl CLI broken, run `xcrun simctl list devices` and make sure it works")
           UI.user_error!("xcrun simctl not working.")
         end
+
+        runtimes_output = {}
+        Open3.popen3('xcrun simctl list runtimes') do |stdin, stdout, stderr, wait_thr|
+          runtimes_output = JSON.parse(stdout.read)
+        end
+        unless runtimes_output['runtimes']
+          UI.error("xcrun simctl CLI broken, run `xcrun simctl list runtimes` and make sure it works")
+          UI.user_error!("xcrun simctl not working.")
+        end
+
 
         output.split(/\n/).each do |line|
           next if line =~ /unavailable/
           next if line =~ /^== /
           if line =~ /^-- /
             (os_type, os_version) = line.gsub(/-- (.*) --/, '\1').split
+            simulator_os_version = runtimes_output['runtimes'].find { |runtime| runtime['name'] == "#{os_type} #{os_version}" }
+            os_version = simulator_os_version['version'] if simulator_os_version # this will be the version of the simulator that xcodebuild is expecting.
           else
             next if os_type =~ /^Unavailable/
 
